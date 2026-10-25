@@ -4,9 +4,10 @@ const ticketSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     eventId: { type: mongoose.Schema.Types.ObjectId, ref: 'Event', required: true },
-    qrCode: { type: String, required: true },
-    qrId: { type: String, required: true, unique: true },
-    paymentId: { type: String, required: true },
+    orderId: { type: String, sparse: true, index: true },
+    qrCode: { type: String }, // Generated only after successful server-side payment verification
+    qrId: { type: String, sparse: true, unique: true }, // Released only after signature verification
+    paymentId: { type: String, sparse: true, index: true },
     paymentStatus: {
       type: String,
       enum: ['pending', 'completed', 'failed'],

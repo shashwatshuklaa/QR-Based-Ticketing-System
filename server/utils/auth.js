@@ -36,6 +36,10 @@ const verifyToken = (token) => {
 
 // Extracts and verifies the token from either the Authorization header or the cookies
 const getUserFromRequest = (req) => {
+  if (!req || !req.headers) {
+    return null;
+  }
+
   let token = null;
 
   // 1. Check Authorization Bearer header: "Bearer <token>"

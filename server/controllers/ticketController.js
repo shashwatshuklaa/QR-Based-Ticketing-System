@@ -8,7 +8,7 @@ exports.getMyTickets = async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized. User session required' });
     }
 
-    const tickets = await Ticket.find({ userId: user.id })
+    const tickets = await Ticket.find({ userId: user.id, paymentStatus: 'completed' })
       .populate('eventId')
       .sort({ createdAt: -1 });
 

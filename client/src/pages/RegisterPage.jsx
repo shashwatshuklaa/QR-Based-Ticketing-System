@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Calendar, MapPin, IndianRupee, QrCode, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, IndianRupee, QrCode, ShieldCheck, CreditCard } from 'lucide-react';
 import Button from '../components/Button';
 import Toast from '../components/Toast';
 import Modal from '../components/Modal';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuth } from '../context/AuthContext';
 import { safeJsonFetch } from '../utils/api';
+import { loadRazorpayScript } from '../utils/razorpay';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -38,6 +39,19 @@ export default function RegisterPage() {
   useEffect(() => {
     fetchEvents();
   }, []);
+
+  // Pre-fill user data if already authenticated
+  useEffect(() => {
+    if (user) {
+      setFormData((prev) => ({
+        ...prev,
+        name: user.name || prev.name,
+        email: user.email || prev.email,
+        phone: user.phone || prev.phone,
+      }));
+      setRegisteredUserId(user.id || user._id);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (formData.eventId) {
@@ -73,69 +87,134 @@ export default function RegisterPage() {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setToast(null);
+  /**
+   * Opens the official Razorpay Checkout modal in Test Mode.
+   */
+  const openRazorpayCheckout = async (orderData, userId) => {
+    setPaymentLoading(true);
 
-    if (!formData.eventId) {
-      setToast({ message: 'Please select an event', type: 'error' });
+    const scriptLoaded = await loadRazorpayScript();
+    if (!scriptLoaded || !window.Razorpay) {
+      setToast({
+        message: 'Failed to load Razorpay Checkout SDK. Please check your internet connection.',
+        type: 'error',
+      });
+      setPaymentLoading(false);
       return;
     }
 
-    if (formData.password.length < 8) {
-      setToast({ message: 'Password must be at least 8 characters long', type: 'error' });
-      return;
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      setToast({ message: 'Passwords do not match', type: 'error' });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // 1. Register attendee account and establish session
-      const registerRes = await register({
+    const options = {
+      key: orderData.key,
+      amount: orderData.amount, // in paise
+      currency: orderData.currency || 'INR',
+      name: selectedEvent?.name || 'Event Ticket',
+      description: `Ticket Registration for ${selectedEvent?.name || 'Event'}`,
+      order_id: orderData.orderId,
+      prefill: {
         name: formData.name,
         email: formData.email,
-        phone: formData.phone,
-        dateOfBirth: formData.dateOfBirth,
-        password: formData.password,
-        eventId: formData.eventId,
+        contact: formData.phone,
+      },
+      theme: {
+        color: '#0f172a',
+      },
+      handler: async function (response) {
+        // Razorpay payment successful in Test Mode
+        try {
+          setPaymentLoading(true);
+          await safeJsonFetch('/api/payment/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              orderId: response.razorpay_order_id,
+              paymentId: response.razorpay_payment_id,
+              signature: response.razorpay_signature,
+              userId: userId || registeredUserId,
+              eventId: formData.eventId,
+            }),
+          });
+
+          setShowPaymentModal(false);
+          setToast({
+            message: 'Payment verified! Your cryptographic QR ticket is ready. Redirecting...',
+            type: 'success',
+          });
+
+          setTimeout(() => {
+            navigate('/dashboard');
+          }, 1200);
+        } catch (err) {
+          setToast({
+            message: err.message || 'Server signature verification failed.',
+            type: 'error',
+          });
+        } finally {
+          setPaymentLoading(false);
+        }
+      },
+      modal: {
+        ondismiss: function () {
+          setPaymentLoading(false);
+          setToast({
+            message: 'Payment was cancelled. You can click "Pay with Razorpay" to complete checkout.',
+            type: 'warning',
+          });
+          // Inform backend of cancelled/dismissed checkout session
+          safeJsonFetch('/api/payment/cancel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              orderId: orderData.orderId,
+              reason: 'Checkout dismissed by attendee',
+            }),
+          }).catch(() => {});
+        },
+      },
+    };
+
+    try {
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function (resp) {
+        setPaymentLoading(false);
+        const safeError = resp.error?.description || 'Payment was declined or failed.';
+        setToast({
+          message: `${safeError} Please try again.`,
+          type: 'error',
+        });
+        // Inform backend of payment failure
+        safeJsonFetch('/api/payment/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            orderId: orderData.orderId,
+            reason: safeError,
+          }),
+        }).catch(() => {});
       });
-
-      const userId = registerRes.user.id || registerRes.user._id;
-      setRegisteredUserId(userId);
-
-      // 2. Initiate payment order on server
-      const orderData = await safeJsonFetch('/api/payment/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          eventId: formData.eventId,
-          userId,
-        }),
+      rzp.open();
+    } catch (err) {
+      setPaymentLoading(false);
+      console.error('[Razorpay] Checkout launch error:', err);
+      setToast({
+        message: 'Could not open Razorpay checkout: ' + (err.message || ''),
+        type: 'error',
       });
-
-      setPendingOrder(orderData);
-      setShowPaymentModal(true);
-    } catch (error) {
-      setToast({ message: error.message || 'Registration failed', type: 'error' });
-    } finally {
-      setLoading(false);
     }
   };
 
-  // Complete payment and verify on server
-  const handleVerifyTestPayment = async () => {
+  /**
+   * Fallback verification for simulated test mode (when RAZORPAY_KEY_ID is omitted).
+   */
+  const handleVerifySimulatedPayment = async () => {
     if (!pendingOrder || !registeredUserId) return;
     setPaymentLoading(true);
 
     try {
       const paymentId = `pay_test_${Date.now()}`;
-      // In test mode, matching the server's test verification
-      const verifyData = await safeJsonFetch('/api/payment/verify', {
+      await safeJsonFetch('/api/payment/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -145,7 +224,6 @@ export default function RegisterPage() {
           signature: 'test_signature',
           userId: registeredUserId,
           eventId: formData.eventId,
-          amount: pendingOrder.amount,
         }),
       });
 
@@ -162,6 +240,76 @@ export default function RegisterPage() {
       setToast({ message: err.message || 'Payment verification failed', type: 'error' });
     } finally {
       setPaymentLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setToast(null);
+
+    if (!formData.eventId) {
+      setToast({ message: 'Please select an event', type: 'error' });
+      return;
+    }
+
+    let userId = registeredUserId || (user ? (user.id || user._id) : null);
+
+    // If not authenticated, require registration fields
+    if (!userId) {
+      if (formData.password.length < 8) {
+        setToast({ message: 'Password must be at least 8 characters long', type: 'error' });
+        return;
+      }
+
+      if (formData.password !== formData.confirmPassword) {
+        setToast({ message: 'Passwords do not match', type: 'error' });
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const registerRes = await register({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          dateOfBirth: formData.dateOfBirth,
+          password: formData.password,
+          eventId: formData.eventId,
+        });
+
+        userId = registerRes.user.id || registerRes.user._id;
+        setRegisteredUserId(userId);
+      } catch (error) {
+        setToast({ message: error.message || 'Registration failed', type: 'error' });
+        setLoading(false);
+        return;
+      }
+    }
+
+    setLoading(true);
+    try {
+      // Create Razorpay payment order on server
+      const orderData = await safeJsonFetch('/api/payment/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          eventId: formData.eventId,
+          userId,
+        }),
+      });
+
+      setPendingOrder(orderData);
+      setShowPaymentModal(true);
+
+      // If official Razorpay Test Mode keys are configured, launch Checkout modal immediately
+      if (!orderData.isSimulated) {
+        openRazorpayCheckout(orderData, userId);
+      }
+    } catch (error) {
+      setToast({ message: error.message || 'Failed to create payment order', type: 'error' });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -191,6 +339,10 @@ export default function RegisterPage() {
                 <span className="text-sm text-gray-600 dark:text-gray-400">Attendee:</span>
                 <span className="text-sm font-medium text-gray-900 dark:text-white">{formData.name}</span>
               </div>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Order ID:</span>
+                <span className="text-xs font-mono text-gray-700 dark:text-gray-300">{pendingOrder.orderId}</span>
+              </div>
               <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
                 <span className="font-semibold text-gray-900 dark:text-white">Total Payable:</span>
                 <span className="text-xl font-bold text-gray-900 dark:text-white">
@@ -199,21 +351,42 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div className="p-3 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-900 rounded-xl text-blue-800 dark:text-blue-300 text-xs flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 flex-shrink-0 text-blue-600 dark:text-blue-400" />
-              <span>
-                <strong>Test Mode:</strong> Click below to verify payment on the server and generate your cryptographic QR ticket pass.
-              </span>
-            </div>
-
-            <Button
-              onClick={handleVerifyTestPayment}
-              loading={paymentLoading}
-              className="w-full"
-              size="lg"
-            >
-              Confirm Payment (₹{pendingOrder.amount / 100})
-            </Button>
+            {pendingOrder.isSimulated ? (
+              <>
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-900 rounded-xl text-amber-800 dark:text-amber-300 text-xs flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span>
+                    <strong>Simulated Test Mode:</strong> No Razorpay API keys configured. You can test the end-to-end flow with simulated verification.
+                  </span>
+                </div>
+                <Button
+                  onClick={handleVerifySimulatedPayment}
+                  loading={paymentLoading}
+                  className="w-full"
+                  size="lg"
+                >
+                  Confirm Simulated Payment (₹{pendingOrder.amount / 100})
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-900 rounded-xl text-blue-800 dark:text-blue-300 text-xs flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+                  <span>
+                    <strong>Razorpay Test Mode:</strong> Pay using Razorpay Test Cards, UPI, or Netbanking.
+                  </span>
+                </div>
+                <Button
+                  onClick={() => openRazorpayCheckout(pendingOrder, registeredUserId)}
+                  loading={paymentLoading}
+                  className="w-full"
+                  size="lg"
+                >
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Pay with Razorpay (₹{pendingOrder.amount / 100})
+                </Button>
+              </>
+            )}
           </div>
         )}
       </Modal>
@@ -353,36 +526,38 @@ export default function RegisterPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-gray-900 dark:focus:border-gray-100 focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-gray-100/10 outline-none transition-all text-sm"
-                  placeholder="••••••••"
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Min 8 chars, 1 uppercase, 1 lowercase, 1 number</p>
-              </div>
+            {!user && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-gray-900 dark:focus:border-gray-100 focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-gray-100/10 outline-none transition-all text-sm"
+                    placeholder="••••••••"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Min 8 chars, 1 uppercase, 1 lowercase, 1 number</p>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">
-                  Confirm Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-gray-900 dark:focus:border-gray-100 focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-gray-100/10 outline-none transition-all text-sm"
-                  placeholder="••••••••"
-                />
+                <div>
+                  <label className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={formData.confirmPassword}
+                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-gray-900 dark:focus:border-gray-100 focus:ring-2 focus:ring-gray-900/10 dark:focus:ring-gray-100/10 outline-none transition-all text-sm"
+                    placeholder="••••••••"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             <Button type="submit" className="w-full mt-4" loading={loading} size="lg">
               {selectedEvent ? `Proceed to Pay ₹${selectedEvent.ticketPrice}` : 'Register'}
