@@ -23,7 +23,7 @@ async function seed() {
         startDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
         endDate: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000),
         venue: 'Grand Convention Hall, Bangalore',
-        ticketPrice: 0, // Free event
+        ticketPrice: 1, // Free event
         maxCapacity: 500,
         isActive: true,
       });
