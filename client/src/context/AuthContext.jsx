@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { safeJsonFetch } from '../utils/api';
+import { safeJsonFetch, apiUrl } from '../utils/api';
 
 const AuthContext = createContext(null);
 
@@ -15,7 +15,7 @@ export function AuthProvider({ children }) {
   const checkSession = async () => {
     try {
       // credentials: 'include' instructs the browser to automatically send our httpOnly cookie
-      const response = await fetch('/api/auth/me', {
+      const response = await fetch(apiUrl('/api/auth/me'), {
         credentials: 'include',
       });
       const contentType = response.headers.get('content-type') || '';
@@ -61,7 +61,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
-      await fetch('/api/auth/logout', {
+      await fetch(apiUrl('/api/auth/logout'), {
         method: 'POST',
         credentials: 'include',
       });

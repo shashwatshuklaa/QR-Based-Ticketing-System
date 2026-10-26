@@ -5,6 +5,7 @@ import { ShieldCheck, ArrowLeft } from 'lucide-react';
 import Button from '../components/Button';
 import Toast from '../components/Toast';
 import ThemeToggle from '../components/ThemeToggle';
+import { apiUrl } from '../utils/api';
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ export default function AdminLoginPage() {
     setToast(null);
 
     try {
-      const res = await fetch('/api/auth/admin/login', {
+      const res = await fetch(apiUrl('/api/auth/admin/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

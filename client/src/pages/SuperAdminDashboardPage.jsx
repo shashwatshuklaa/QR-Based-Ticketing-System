@@ -16,6 +16,7 @@ import Toast from '../components/Toast';
 import Modal from '../components/Modal';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuth } from '../context/AuthContext';
+import { apiUrl } from '../utils/api';
 
 export default function SuperAdminDashboardPage() {
   const navigate = useNavigate();
@@ -58,9 +59,9 @@ export default function SuperAdminDashboardPage() {
     setLoading(true);
     try {
       const [analyticsRes, adminsRes, eventsRes] = await Promise.all([
-        fetch('/api/superadmin/analytics', { credentials: 'include' }),
-        fetch('/api/superadmin/admins', { credentials: 'include' }),
-        fetch('/api/events', { credentials: 'include' }),
+        fetch(apiUrl('/api/superadmin/analytics'), { credentials: 'include' }),
+        fetch(apiUrl('/api/superadmin/admins'), { credentials: 'include' }),
+        fetch(apiUrl('/api/events'), { credentials: 'include' }),
       ]);
 
       if (analyticsRes.status === 401 || adminsRes.status === 401) {
@@ -85,7 +86,7 @@ export default function SuperAdminDashboardPage() {
   const handleCreateEvent = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/superadmin/events', {
+      const res = await fetch(apiUrl('/api/superadmin/events'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -115,7 +116,7 @@ export default function SuperAdminDashboardPage() {
   const handleDeleteEvent = async (id, name) => {
     if (!window.confirm(`Delete event "${name}"?`)) return;
     try {
-      const res = await fetch(`/api/superadmin/events/${id}`, {
+      const res = await fetch(apiUrl(`/api/superadmin/events/${id}`), {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -131,7 +132,7 @@ export default function SuperAdminDashboardPage() {
   const handleCreateAdmin = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/superadmin/admins', {
+      const res = await fetch(apiUrl('/api/superadmin/admins'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -153,7 +154,7 @@ export default function SuperAdminDashboardPage() {
   const handleDeleteAdmin = async (id, name) => {
     if (!window.confirm(`Delete admin account for "${name}"?`)) return;
     try {
-      const res = await fetch(`/api/superadmin/admins/${id}`, {
+      const res = await fetch(apiUrl(`/api/superadmin/admins/${id}`), {
         method: 'DELETE',
         credentials: 'include',
       });

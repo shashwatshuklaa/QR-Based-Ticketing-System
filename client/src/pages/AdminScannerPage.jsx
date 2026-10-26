@@ -15,6 +15,7 @@ import QRScanner, { playScanSound } from '../components/QRScanner';
 import Button from '../components/Button';
 import Toast from '../components/Toast';
 import ThemeToggle from '../components/ThemeToggle';
+import { apiUrl } from '../utils/api';
 
 export default function AdminScannerPage() {
   const navigate = useNavigate();
@@ -69,7 +70,7 @@ export default function AdminScannerPage() {
     }
 
     try {
-      const res = await fetch('/api/scanner/scan', {
+      const res = await fetch(apiUrl('/api/scanner/scan'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -139,7 +140,7 @@ export default function AdminScannerPage() {
     setIsSyncing(true);
 
     try {
-      const res = await fetch('/api/scanner/sync', {
+      const res = await fetch(apiUrl('/api/scanner/sync'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

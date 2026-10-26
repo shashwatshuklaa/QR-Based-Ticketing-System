@@ -14,6 +14,7 @@ import Button from '../components/Button';
 import Toast from '../components/Toast';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuth } from '../context/AuthContext';
+import { apiUrl } from '../utils/api';
 
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
@@ -38,7 +39,7 @@ export default function AdminDashboardPage() {
 
   const fetchEvents = async () => {
     try {
-      const res = await fetch('/api/events', { credentials: 'include' });
+      const res = await fetch(apiUrl('/api/events'), { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         const list = Array.isArray(data) ? data : data.events || [];
@@ -55,7 +56,7 @@ export default function AdminDashboardPage() {
   const fetchDashboardData = async (eventId) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/dashboard?eventId=${eventId}`, {
+      const res = await fetch(apiUrl(`/api/admin/dashboard?eventId=${eventId}`), {
         credentials: 'include',
       });
       if (res.ok) {

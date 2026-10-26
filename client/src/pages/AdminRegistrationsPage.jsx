@@ -12,6 +12,7 @@ import {
 import Button from '../components/Button';
 import Toast from '../components/Toast';
 import ThemeToggle from '../components/ThemeToggle';
+import { apiUrl } from '../utils/api';
 
 export default function AdminRegistrationsPage() {
   const [events, setEvents] = useState([]);
@@ -34,7 +35,7 @@ export default function AdminRegistrationsPage() {
 
   const fetchEvents = async () => {
     try {
-      const res = await fetch('/api/events', { credentials: 'include' });
+      const res = await fetch(apiUrl('/api/events'), { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         const list = Array.isArray(data) ? data : data.events || [];
@@ -49,7 +50,7 @@ export default function AdminRegistrationsPage() {
   const fetchAttendees = async (eventId) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/users?eventId=${eventId}`, {
+      const res = await fetch(apiUrl(`/api/admin/users?eventId=${eventId}`), {
         credentials: 'include',
       });
       if (res.ok) {
@@ -72,7 +73,7 @@ export default function AdminRegistrationsPage() {
 
     setResettingId(userId);
     try {
-      const res = await fetch(`/api/admin/users/${userId}/reset-qr`, {
+      const res = await fetch(apiUrl(`/api/admin/users/${userId}/reset-qr`), {
         method: 'POST',
         credentials: 'include',
       });

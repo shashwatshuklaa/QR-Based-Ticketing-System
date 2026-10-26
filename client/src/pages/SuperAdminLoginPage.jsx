@@ -5,6 +5,7 @@ import { Crown, ArrowLeft } from 'lucide-react';
 import Button from '../components/Button';
 import Toast from '../components/Toast';
 import ThemeToggle from '../components/ThemeToggle';
+import { apiUrl } from '../utils/api';
 
 export default function SuperAdminLoginPage() {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ export default function SuperAdminLoginPage() {
     setToast(null);
 
     try {
-      const res = await fetch('/api/auth/superadmin/login', {
+      const res = await fetch(apiUrl('/api/auth/superadmin/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

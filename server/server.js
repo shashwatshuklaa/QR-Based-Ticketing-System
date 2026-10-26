@@ -1,9 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const path = require('path');
 
 // Load environment variables before importing routes and database configs
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 const connectDB = require('./config/db');
 
@@ -20,10 +21,25 @@ connectDB();
 
 const app = express();
 
+// Build list of allowed origins for CORS (remove trailing slashes for standard Origin header matching)
+const defaultOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://qr-based-ticketing-system-di2m.vercel.app',
+];
+
+const configuredOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(',')
+      .map((url) => url.trim().replace(/\/+$/, ''))
+      .filter(Boolean)
+  : [];
+
+const allowedOrigins = Array.from(new Set([...defaultOrigins, ...configuredOrigins]));
+
 // Enable CORS with credentials support (for cookies and authorization headers)
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: allowedOrigins,
     credentials: true,
   })
 );
